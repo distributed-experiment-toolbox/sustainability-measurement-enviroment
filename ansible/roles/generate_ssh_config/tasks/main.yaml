@@ -1,0 +1,10 @@
+- name: "Generate ssh config file on control-plane"
+  template:
+    src: config.j2
+    dest: "{{ ansible_env.HOME }}/.ssh/config"
+    mode: '0600'
+  vars:
+    ssh_config_user: "{{ hostvars[groups['control_plane'][0]].ansible_user | default(hostvars[groups['control_plane'][0]].ansible_ssh_user | default('root')) }}"
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  run_once: true
+  become: false

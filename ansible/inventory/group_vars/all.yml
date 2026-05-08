@@ -1,0 +1,54 @@
+---
+# ================================================================
+# Central configuration - verify versions before running.
+# ================================================================
+
+# --- Node labels ---
+# Generic role split: control-plane runs workload generators / tooling,
+# SUT nodes are the systems under measurement. Add experiment-specific
+# labels (runtime, scheduler, etc.) in your example/experiment vars file.
+control_plane_labels:
+  - "role=system"
+  - "workload-generator=true"
+sut_labels:
+  - "role=sut"
+
+# --- Paths ---
+configurations_dir: "{{ playbook_dir }}/../configurations"
+
+# Key generated on the control-plane for inter-node access
+ssh_key_type: ed25519
+ssh_key_path: "{{ ansible_facts.env.HOME }}/.ssh/experiment_key"
+
+# --- Containerd ---
+# https://github.com/containerd/containerd/releases
+containerd_version: "2.2.1"
+
+# https://github.com/opencontainers/runc/releases
+runc_version: "1.4.0"
+
+# https://github.com/containernetworking/plugins/releases
+cni_plugins_version: "1.9.0"
+
+# --- Kubespray ---
+# https://github.com/kubernetes-sigs/kubespray/releases
+kubespray_version: "v2.30.0"
+kubespray_dir: "/opt/kubespray"
+# Kubespray v2.30.0 defaults: K8s 1.34.3, containerd 2.2.1, flannel 0.27.3
+kube_network_plugin: flannel
+
+# --- Helm chart versions (observability stack) ---
+# https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack
+kube_prometheus_stack_chart_version: "82.0.0"
+
+# Kepler - configurations/kepler.yaml pins image to v0.11.4
+# https://sustainable-computing-io.github.io/kepler-helm-chart
+kepler_chart_version: "0.11.4"
+
+# Scaphandre
+# https://hubblo-org.github.io/helm-charts
+scaphandre_chart_version: "1.0.2"
+
+# Process exporter
+# https://github.com/ncabatoff/process-exporter/releases
+process_exporter_version: "0.8.4"

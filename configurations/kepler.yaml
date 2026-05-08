@@ -1,0 +1,40 @@
+# values.yaml
+image:
+  repository: quay.io/sustainable_computing_io/kepler
+  tag: "v0.11.4"
+  pullPolicy: IfNotPresent
+# Default values for kepler.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+daemonset:
+  tolerations: {}
+  nodeSelector: 
+    kubernetes.io/os: linux
+    role: sut
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+config:
+  log:
+    level: info
+    format: text
+  experimental:
+    hwmon:
+      enabled: false # Enable experimental hwmon power monitoring
+    gpu:
+      enabled: false # Enable experimental GPU power monitoring
+      idlePower: 0 # GPU idle power in Watts (0 = auto-detect)
+
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  enabled: true
+  interval: 10s
+  scrapeTimeout: 5s
+  path: /metrics

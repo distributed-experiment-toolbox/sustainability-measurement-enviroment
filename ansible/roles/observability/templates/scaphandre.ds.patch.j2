@@ -1,0 +1,47 @@
+{
+    "spec": {
+        "template": {
+            "spec": {
+                "nodeSelector": {
+                    "role": "sut"
+                },
+                "containers": [
+                    {
+                        "name": "scaphandre",
+                        "securityContext": {
+                            "privileged": true
+                        },
+                        "volumeMounts": [
+                            {
+                                "name": "powercap-devices",
+                                "mountPath": "/sys/devices/virtual/powercap",
+                                "readOnly": true
+                            },
+                            {
+                                "name": "powercap-class",
+                                "mountPath": "/sys/class/powercap",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "powercap-devices",
+                        "hostPath": {
+                            "path": "/sys/devices/virtual/powercap",
+                            "type": "Directory"
+                        }
+                    },
+                    {
+                        "name": "powercap-class",
+                        "hostPath": {
+                            "path": "/sys/class/powercap",
+                            "type": "Directory"
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}

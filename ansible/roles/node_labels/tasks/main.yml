@@ -1,0 +1,30 @@
+---
+# Label Kubernetes nodes according to the experiment outline.
+# Runs on control-plane using kubectl.
+
+- name: Label control-plane nodes
+  command: >-
+    kubectl label node
+    {{ hostvars[item].kubernetes_node_name | default(item) }}
+    {{ control_plane_labels | join(' ') }}
+    --overwrite
+  loop: "{{ groups['control_plane'] }}"
+  changed_when: false
+
+- name: Label SUT nodes
+  command: >-
+    kubectl label node
+    {{ hostvars[item].kubernetes_node_name | default(item) }}
+    {{ sut_labels | join(' ') }}
+    --overwrite
+  loop: "{{ groups['sut'] }}"
+  changed_when: false
+
+- name: Verify node labels
+  command: kubectl get nodes --show-labels
+  register: node_labels_output
+  changed_when: false
+
+- name: Show labeled nodes
+  debug:
+    msg: "{{ node_labels_output.stdout_lines }}"

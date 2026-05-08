@@ -1,0 +1,7 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+
+- name: apply cpu perf lock
+  command: /usr/local/sbin/cpu-perf-lock.sh

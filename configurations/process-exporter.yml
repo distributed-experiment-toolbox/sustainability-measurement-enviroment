@@ -1,0 +1,52 @@
+process_names:
+  # -------------------------
+  # Container shims
+  # -------------------------
+
+  - name: runc-shim
+    cmdline:
+      - '.*containerd-shim-runc-v2.*'
+
+  # -------------------------
+  # Kubernetes platform
+  # -------------------------
+
+  - name: kubelet
+    cmdline:
+      - '.*kubelet.*'
+
+  - name: containerd
+    cmdline:
+      - '.*containerd.*'
+
+  - name: kube-proxy
+    cmdline:
+      - '.*kube-proxy.*'
+
+  - name: flannel
+    cmdline:
+      - '.*flanneld.*'
+
+  # -------------------------
+  # Observability stack
+  # -------------------------
+
+  - name: kepler
+    cmdline:
+      - '.*kepler.*'
+
+  - name: scaphandre
+    cmdline:
+      - '.*scaphandre.*'
+
+  # -------------------------
+  # System background
+  # -------------------------
+
+  - name: systemd
+    exe:
+      - '/usr/lib/systemd/systemd'
+
+  - name: kernel-workers
+    cmdline:
+      - '.*kworker.*'

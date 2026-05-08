@@ -1,0 +1,24 @@
+---
+# Pin SUT CPUs to a deterministic state for reproducible power measurement.
+
+# cpufreq governor for all online cores.
+# Options (driver-dependent): performance, powersave, schedutil, ondemand, conservative.
+cpu_governor: performance
+
+# Disable turbo boost so peak frequency is bounded by base clock.
+cpu_disable_turbo: true
+
+# --- Optional kernel cmdline tweaks (require reboot to take effect) ---
+
+# Cap C-state depth. "0" disables idle entirely (max power, lowest latency).
+# "1" allows only C1. Leave unset to keep distro defaults.
+# cpu_max_cstate: "1"
+
+# Force idle=poll (CPUs busy-loop instead of halting). Burns power but
+# eliminates wake-up latency / state-transition noise. Usually NOT what
+# you want for a sustainability experiment - prefer cpu_max_cstate.
+cpu_idle_poll: false
+
+# Comma list of cores to isolate from the scheduler (nohz_full + isolcpus).
+# Example: "2-15" to dedicate cores 2-15 to the workload.
+# cpu_isolate_cores: ""

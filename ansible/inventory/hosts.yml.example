@@ -1,0 +1,36 @@
+---
+# Copy this file to hosts.yml and adjust to your environment.
+#
+#   cp hosts.yml.example hosts.yml
+#
+# Ensure passwordless SSH access from the Ansible controller to all hosts.
+# Set the SSH key globally in group_vars/all.yml (ansible_ssh_private_key_file)
+# or per-host below.
+
+all:
+  vars:
+    ansible_ssh_private_key_file: <KEY>
+    ansible_ssh_common_args: <EXTRA ARGS>
+  children:
+    control_plane:
+      hosts:
+        cp1:
+          ansible_host: 10.0.0.1
+          ansible_user: admin
+          # Optional: set internal_ip when ansible_host is a public IP but nodes
+          # communicate over a private network. If omitted, ansible_host is used.
+          # internal_ip: 10.0.0.1
+          # Kubernetes node name (must match `kubectl get nodes` output after cluster setup)
+          kubernetes_node_name: cp1
+    sut:
+      hosts:
+        sut1:
+          ansible_host: 10.0.0.10
+          ansible_user: admin
+          # internal_ip: 10.0.0.10
+          kubernetes_node_name: sut1
+        # sut2:
+        #   ansible_host: 10.0.0.11
+        #   ansible_user: admin
+        #   # internal_ip: 10.0.0.11
+        #   kubernetes_node_name: sut2

@@ -1,0 +1,9 @@
+---
+# Kubespray addons overrides.
+# {{ ansible_managed }}
+
+# Enable Helm so we can install observability charts post-cluster.
+helm_enabled: true
+
+# Enable Kubernetes Metrics API (metrics-server addon).
+metrics_server_enabled: true

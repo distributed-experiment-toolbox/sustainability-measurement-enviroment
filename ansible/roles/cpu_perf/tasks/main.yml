@@ -1,0 +1,130 @@
+---
+# Lock SUT CPUs into a deterministic state for power measurement:
+#   * cpufreq governor pinned (default: performance)
+#   * Intel turbo boost disabled (default: true)
+#   * Optional kernel cmdline overrides for C-state / idle behaviour
+#
+# Sysfs writes are applied immediately AND persisted via a systemd
+# oneshot unit so the settings survive reboots without relying on
+# tuned/cpupower.service availability.
+
+- name: Install cpu tooling
+  apt:
+    name:
+      - linux-cpupower
+    state: present
+
+- name: Detect available cpufreq governors
+  shell: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
+  register: available_governors
+  changed_when: false
+  failed_when: false
+
+- name: Warn if requested governor unavailable
+  debug:
+    msg: >-
+      Requested cpu_governor='{{ cpu_governor }}' not in available
+      governors '{{ available_governors.stdout }}'. Skipping governor
+      pin. Check intel_pstate / acpi-cpufreq driver.
+  when:
+    - available_governors.rc == 0
+    - cpu_governor not in available_governors.stdout.split()
+
+- name: Deploy cpu-perf-lock systemd unit
+  copy:
+    dest: /etc/systemd/system/cpu-perf-lock.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Pin CPU governor and disable turbo for power measurement
+      After=multi-user.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/cpu-perf-lock.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: reload systemd
+
+- name: Deploy cpu-perf-lock script
+  copy:
+    dest: /usr/local/sbin/cpu-perf-lock.sh
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+      GOV="{{ cpu_governor }}"
+      DISABLE_TURBO="{{ cpu_disable_turbo | ternary('1', '0') }}"
+
+      for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        [ -w "$g" ] && echo "$GOV" > "$g" || true
+      done
+
+      # intel_pstate turbo (newer kernels)
+      if [ -w /sys/devices/system/cpu/intel_pstate/no_turbo ]; then
+        echo "$DISABLE_TURBO" > /sys/devices/system/cpu/intel_pstate/no_turbo
+      fi
+      # acpi-cpufreq turbo (older kernels)
+      if [ -w /sys/devices/system/cpu/cpufreq/boost ]; then
+        # boost=1 means enabled; invert DISABLE_TURBO
+        if [ "$DISABLE_TURBO" = "1" ]; then echo 0 > /sys/devices/system/cpu/cpufreq/boost
+        else echo 1 > /sys/devices/system/cpu/cpufreq/boost; fi
+      fi
+  notify: apply cpu perf lock
+
+- name: Enable cpu-perf-lock service
+  systemd:
+    name: cpu-perf-lock.service
+    enabled: true
+    daemon_reload: true
+
+- name: Apply cpu-perf-lock now
+  command: /usr/local/sbin/cpu-perf-lock.sh
+  changed_when: false
+
+# --- Optional: kernel cmdline tweaks (require reboot to take effect) ---
+
+- name: Build extra kernel cmdline parameters
+  set_fact:
+    cpu_perf_cmdline_extra: >-
+      {{
+        ([
+          ('intel_idle.max_cstate=' ~ cpu_max_cstate) if cpu_max_cstate is defined and cpu_max_cstate | string | length > 0 else '',
+          ('processor.max_cstate=' ~ cpu_max_cstate) if cpu_max_cstate is defined and cpu_max_cstate | string | length > 0 else '',
+          'idle=poll' if (cpu_idle_poll | default(false)) else '',
+          'nohz_full=' ~ (cpu_isolate_cores | default('')) if (cpu_isolate_cores | default('')) | length > 0 else '',
+          'isolcpus=' ~ (cpu_isolate_cores | default('')) if (cpu_isolate_cores | default('')) | length > 0 else '',
+        ] | reject('equalto', '') | list) | join(' ')
+      }}
+
+- name: Patch GRUB_CMDLINE_LINUX_DEFAULT for c-state / isolation params
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet {{ cpu_perf_cmdline_extra }}"'
+    backup: true
+  when: cpu_perf_cmdline_extra | trim | length > 0
+  register: grub_changed
+
+- name: Run update-grub
+  command: update-grub
+  when: grub_changed is defined and grub_changed.changed
+
+- name: Notice if reboot required for cmdline changes
+  debug:
+    msg: >-
+      GRUB cmdline updated. Reboot SUT nodes to apply
+      '{{ cpu_perf_cmdline_extra }}'.
+  when: grub_changed is defined and grub_changed.changed
+
+- name: Verify governor in effect
+  shell: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+  register: gov_now
+  changed_when: false
+  failed_when: false
+
+- name: Show current governor
+  debug:
+    msg: "cpu0 governor = {{ gov_now.stdout | default('unknown') }} (target {{ cpu_governor }})"

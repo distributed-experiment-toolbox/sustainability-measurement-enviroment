@@ -1,0 +1,98 @@
+#TODO: extend node exporter features 
+#TODO: ensure storage is sufficient for 8h retention with 1s scrape interval
+
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: false
+
+kube-state-metrics:
+  nodeSelector:
+    role: system
+
+prometheusOperator:
+  nodeSelector:
+    role: system
+  admissionWebhooks:
+    patch:
+      nodeSelector:
+        role: system
+
+nodeExporter:
+  enabled: true
+
+prometheus-node-exporter:
+  namespaceOverride: ""
+  podLabels:
+    jobLabel: node-exporter
+  nodeSelector:
+    role: sut
+  releaseLabel: true
+  # perf collector needs CAP_PERFMON (kernel 5.8+) or CAP_SYS_ADMIN +
+  # kernel.perf_event_paranoid <= 0 on the host (set by rapl role).
+  hostPID: true
+  containerSecurityContext:
+    capabilities:
+      add:
+        - SYS_ADMIN
+        - PERFMON
+  extraArgs:
+    - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/containerd/.+|var/lib/docker/.+|var/lib/kubelet/.+)($|/)
+    - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|erofs)$
+    - --collector.interrupts
+    - --collector.processes
+    # --- Power / energy / freq supplements to RAPL ---
+    - --collector.hwmon            # node_hwmon_power_average_watts, temps, VRM PMBus
+    - --collector.cpufreq          # node_cpu_scaling_frequency_hertz
+    - --collector.thermal_zone     # node_thermal_zone_temp
+    - --collector.rapl             # node_rapl_* (powercap interface, redundant w/ Kepler but cheap)
+    # --- Hardware perf counters ---
+    - --collector.perf
+    - --collector.perf.cpus=0-127  # clamp to logical cpu count; node-exporter ignores extras
+    - --collector.perf.tracepoint=block:block_rq_complete
+    - --collector.perf.tracepoint=sched:sched_switch
+  prometheus:
+    monitor:
+      attachMetadata:
+        node: true
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+          action: replace
+
+
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30090
+  prometheusSpec:
+    replicas: 1
+    nodeSelector:
+      role: system
+    scrapeInterval: 10s
+    scrapeTimeout: 5s
+    evaluationInterval: 1s
+    retention: 8h
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    podMonitorSelector: {}
+    serviceMonitorNamespaceSelector:
+      matchNames:
+        - monitoring
+    podMonitorNamespaceSelector:
+      matchNames:
+        - monitoring
+    scrapeConfigSelector:
+      matchLabels:
+        release: kube-prometheus-stack
+    scrapeConfigNamespaceSelector:
+      matchNames:
+        - monitoring
+  monitor:
+    enabled: true
+    attachMetadata:
+      node: true

@@ -1,0 +1,23 @@
+---
+# Kubespray k8s-cluster overrides.
+# {{ ansible_managed }}
+#
+# These values override the defaults in group_vars/k8s_cluster/k8s-cluster.yml.
+# Only settings that differ from Kubespray defaults are listed here.
+
+# CNI: use Flannel (Readme requirement)
+kube_network_plugin: {{ kube_network_plugin }}
+
+# Container runtime
+container_manager: containerd
+
+# SystemdCgroup (default in Kubespray v2.30.0, listed explicitly for clarity)
+kubelet_cgroup_driver: systemd
+
+# Fix CoreDNS loop: Debian 13 uses systemd-resolved (127.0.0.53) which causes
+# CoreDNS to forward queries back to itself. Use resolvconf_mode to point
+# kubelet at the real upstream DNS servers instead of the local stub resolver.
+resolvconf_mode: host_resolvconf
+upstream_dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4

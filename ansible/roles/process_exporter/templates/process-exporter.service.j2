@@ -1,0 +1,34 @@
+[Unit]
+Description=Prometheus Process Exporter (ncabatoff/process-exporter)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+
+ExecStart=/usr/local/bin/process-exporter \
+  --web.listen-address=0.0.0.0:9256 \
+  --config.path=/etc/process-exporter.yml
+
+Restart=on-failure
+RestartSec=10s
+
+# Basic hardening (keep /proc readable; don't over-sandbox)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+# Allow reading the config + (optionally) TLS/extra files if you add them later
+ReadOnlyPaths=/etc/process-exporter.yml
+
+# Needs to read process info via /proc
+ProcSubset=all
+ProtectProc=default
+
+# If you hit permission errors, comment these in/out as needed:
+# RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target
