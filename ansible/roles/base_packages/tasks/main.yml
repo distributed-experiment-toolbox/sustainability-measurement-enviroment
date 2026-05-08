@@ -54,6 +54,7 @@
       - python3
       - python3-pip
       - python3-venv
+      - pipenv
       - tmux
       - build-essential
       - pkg-config

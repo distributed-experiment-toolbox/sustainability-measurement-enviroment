@@ -60,10 +60,7 @@ perf collector can read counters from inside the container.
    Debian 13.
 3. Set up the cluster base on the nodes; the playbooks label them.
 4. Install the observability stack on the cluster.
-5. Plug in your experiment (workloads, drivers, custom shims, …) — see
-   [examples/runwasi-experiment/](examples/runwasi-experiment/) for a
-   reference layout.
-
+5. Drop in your workloads and run experiments, e.g. with SMA https://github.com/ISE-TU-Berlin/sustainability-measurement-agent.git / https://pypi.org/project/sustainability-measurement-agent/ 
 # Installation
 
 ## Prerequisites
@@ -123,7 +120,3 @@ cd ansible
 #    nodes, install observability stack, ssh config on control-plane.
 ansible-playbook -i inventory/hosts.yml post-cluster.yml
 ```
-
-At this point you have a labelled cluster with RAPL + observability,
-no experiment-specific software installed. Drop in your own
-extensions or look at [examples/runwasi-experiment/](examples/runwasi-experiment/).
