@@ -1,0 +1,11 @@
+---
+deploy_arch: amd64
+
+# https://github.com/containerd/containerd/releases
+containerd_version: "2.2.1"
+
+# https://github.com/opencontainers/runc/releases
+runc_version: "1.4.0"
+
+# https://github.com/containernetworking/plugins/releases
+cni_plugins_version: "1.9.0"

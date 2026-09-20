@@ -1,0 +1,47 @@
+---
+# Generate SSH key on control-plane and distribute to SUT nodes.
+# Configure passwordless sudo for ctr on SUT nodes.
+
+- name: Generate SSH key pair
+  command: "ssh-keygen -t {{ ssh_key_type }} -f {{ ssh_key_path }} -N ''"
+  args:
+    creates: "{{ ssh_key_path }}"
+
+- name: Read public key
+  slurp:
+    src: "{{ ssh_key_path }}.pub"
+  register: ssh_pub_key
+
+- name: Distribute public key to SUT nodes
+  authorized_key:
+    user: "{{ hostvars[item].ansible_user }}"
+    key: "{{ ssh_pub_key.content | b64decode }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['sut'] }}"
+
+- name: Distribute public key to control-plane itself (for Kubespray)
+  authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ ssh_pub_key.content | b64decode }}"
+
+- name: Configure passwordless sudo for ctr on SUT nodes
+  lineinfile:
+    path: /etc/sudoers.d/ctr-nopasswd
+    line: "{{ hostvars[item].ansible_user }} ALL=(root) NOPASSWD: /usr/bin/ctr, /usr/local/bin/ctr"
+    create: true
+    mode: "0440"
+    validate: "visudo -cf %s"
+  delegate_to: "{{ item }}"
+  become: true
+  loop: "{{ groups['sut'] }}"
+
+- name: Verify SSH connectivity to SUT nodes
+  command: >-
+    ssh -o StrictHostKeyChecking=no -o BatchMode=yes
+    -i {{ ssh_key_path }}
+    {{ hostvars[item].ansible_user }}@{{ hostvars[item].internal_ip | default(hostvars[item].ansible_host) }}
+    echo ok
+  loop: "{{ groups['sut'] }}"
+  changed_when: false
+  register: ssh_test
+  failed_when: ssh_test.rc != 0

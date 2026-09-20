@@ -1,0 +1,74 @@
+---
+# Packages every node needs, plus the control-plane's tooling.
+# Docker lives in the `docker` role - it has to be re-applied after Kubespray.
+
+- name: Resolve user home directory
+  set_fact:
+    user_home: "{{ '/root' if ansible_user == 'root' else '/home/' + ansible_user }}"
+
+- name: Recover interrupted dpkg state
+  command: dpkg --configure -a
+  register: dpkg_recover
+  changed_when: false
+  failed_when: false
+
+- name: Fix broken apt dependencies
+  command: apt-get -f install -y
+  register: apt_fix
+  changed_when: false
+  failed_when: false
+
+- name: Update apt cache and upgrade
+  command: apt update
+  become: true
+  changed_when: false
+
+- name: Install common packages
+  apt:
+    name:
+      - curl
+      - wget
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - apt-transport-https
+      - jq
+      - unzip
+      - socat
+      - conntrack
+      - ipset
+      - iptables
+    state: present
+
+# --- Control-plane only ---
+
+- name: Install control-plane packages
+  apt:
+    name:
+      - git
+      - python3
+      - python3-pip
+      - python3-venv
+      - tmux
+      - build-essential
+      - pkg-config
+      - libssl-dev
+    state: present
+  when: inventory_hostname in groups['control_plane']
+
+- name: Install Helm {{ helm_version }} (control-plane)
+  shell: >-
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    | bash -s -- --version {{ helm_version }}
+  args:
+    creates: /usr/local/bin/helm
+  when: inventory_hostname in groups['control_plane']
+
+- name: Install Skaffold (control-plane)
+  get_url:
+    url: "https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-{{ deploy_arch }}"
+    dest: /usr/local/bin/skaffold
+    mode: "0755"
+  when:
+    - inventory_hostname in groups['control_plane']
+    - install_skaffold | bool

@@ -1,0 +1,38 @@
+---
+# ============================================================================
+# The observability stack. This is the part of the deployment that decides
+# what you can measure, so every version and every values file is pinned and
+# listed here. See configurations/Readme.md for the same table plus what each
+# values file is responsible for.
+# ============================================================================
+
+observability_namespace: monitoring
+
+# --- Helm chart versions ---
+
+# https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack
+kube_prometheus_stack_chart_version: "82.0.0"
+
+# https://sustainable-computing-io.github.io/kepler-helm-chart
+# The image tag is pinned separately inside configurations/kepler.yaml.
+kepler_chart_version: "0.11.4"
+
+# Scaphandre is installed from a git checkout, not a chart repo - see the role.
+scaphandre_chart_version: "1.0.2"
+
+# --- Values files ---
+# Defaults live in the collection's configurations/ directory. Point these at
+# your own files to replace one wholesale, e.g.
+#   kepler_values_file: "{{ playbook_dir }}/values/kepler.yaml"
+configurations_dir: "{{ role_path }}/../../configurations"
+kube_prometheus_stack_values_file: "{{ configurations_dir }}/kube-prometheus-stack.yaml"
+kepler_values_file: "{{ configurations_dir }}/kepler.yaml"
+scaphandre_values_file: "{{ configurations_dir }}/scaphandre.yaml"
+
+# Where the scaphandre source checkout lands on the control-plane.
+scaphandre_src_dir: /opt/scaphandre
+
+# Fail the play when kepler or scaphandre do not become ready. Set false only
+# if you are knowingly running on hardware one of them cannot support.
+observability_require_ready: true
+observability_ready_timeout: 180

@@ -1,0 +1,9 @@
+version = 3
+
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.wasmtime]
+  runtime_type = "io.containerd.wasmtime.v1"
+# kubelet runs the systemd cgroup driver (Kubespray's default). Without this
+# the shim resolves a cgroupfs path kubelet never created and pods fail to
+# start with no useful error.
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.wasmtime.options]
+  SystemdCgroup = true

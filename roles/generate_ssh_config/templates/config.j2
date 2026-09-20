@@ -1,0 +1,4 @@
+Host *
+    User {{ ssh_config_user }}
+    IdentityFile ~/.ssh/{{ ssh_key_path | basename }}
+    StrictHostKeyChecking accept-new

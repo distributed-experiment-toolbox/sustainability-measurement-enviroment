@@ -1,0 +1,8 @@
+---
+deploy_arch: amd64
+
+# https://github.com/ncabatoff/process-exporter/releases
+process_exporter_version: "0.8.4"
+
+# Which processes are tracked. Override with an absolute path to your own file.
+process_exporter_config_file: "{{ role_path }}/../../configurations/process-exporter.yml"

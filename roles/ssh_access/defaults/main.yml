@@ -1,0 +1,6 @@
+---
+# Key generated on the control-plane for inter-node access.
+ssh_key_type: ed25519
+# Derived from ansible_user rather than gathered facts, so the path resolves
+# in plays that run with gather_facts: false.
+ssh_key_path: "{{ '/root' if ansible_user == 'root' else '/home/' + ansible_user }}/.ssh/experiment_key"

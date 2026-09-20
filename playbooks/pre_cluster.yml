@@ -1,0 +1,59 @@
+---
+# Reference pre-cluster setup: run BEFORE Kubespray.
+#
+#   ansible-playbook -i hosts.yml sustian.deploy.pre_cluster
+#
+# This is a reference assembly, not the contract. Projects that need a
+# different set or order of roles write their own playbook and call the roles
+# by FQCN; nothing here is required to use the collection.
+#
+# Roles guarded by a flag are opinions, off by default. Turn them on in
+# group_vars - see examples/minimal/group_vars_all.yml.
+#
+# Inventory contract: two groups, `control_plane` and `sut`. Every host may
+# set `internal_ip` (private address the nodes use to reach each other) and
+# `kubernetes_node_name`.
+
+- name: "Configure SSH access from control-plane to SUT nodes"
+  hosts: control_plane
+  become: false
+  roles:
+    - sustian.deploy.ssh_access
+
+- name: "Install base packages on all nodes"
+  hosts: all
+  become: true
+  roles:
+    - sustian.deploy.base_packages
+
+- name: "Install Docker on the control-plane"
+  hosts: control_plane
+  become: true
+  roles:
+    - role: sustian.deploy.docker
+      when: install_docker | default(false) | bool
+
+- name: "Install and configure containerd on all nodes"
+  hosts: all
+  become: true
+  roles:
+    - sustian.deploy.containerd
+
+- name: "Configure RAPL access on SUT nodes"
+  hosts: sut
+  become: true
+  roles:
+    - sustian.deploy.rapl
+
+- name: "Pin SUT CPUs for stable power measurement"
+  hosts: sut
+  become: true
+  roles:
+    - role: sustian.deploy.cpu_perf
+      when: cpu_perf_enabled | default(false) | bool
+
+- name: "Prepare Kubespray on the control-plane"
+  hosts: control_plane
+  become: false
+  roles:
+    - sustian.deploy.kubespray

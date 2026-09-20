@@ -1,0 +1,5 @@
+---
+collections:
+  - name: https://github.com/distributed-experiment-toolbox/sustainability-measurement-enviroment.git
+    type: git
+    version: main

@@ -1,0 +1,64 @@
+---
+# Docker on the control-plane, for building and pushing images.
+#
+# Run this role TWICE: once in pre-cluster (so images can be built before the
+# cluster exists) and again in post-cluster. Kubespray removes Docker during
+# bootstrap, so the post-cluster pass is the authoritative one - dropping it
+# leaves a control-plane that cannot build.
+
+- name: Ensure apt keyrings directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add Docker GPG key
+  get_url:
+    url: https://download.docker.com/linux/debian/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Add Docker apt repository
+  apt_repository:
+    repo: >-
+      deb [arch={{ deploy_arch | default('amd64') }} signed-by=/etc/apt/keyrings/docker.asc]
+      https://download.docker.com/linux/debian
+      {{ ansible_distribution_release }} stable
+    filename: docker
+    state: present
+
+- name: Install Docker packages
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+    install_recommends: false
+
+- name: Write Docker daemon configuration
+  copy:
+    content: "{{ docker_daemon_config | to_nice_json }}\n"
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+  when: docker_daemon_config | length > 0
+  notify: restart docker
+
+- name: Ensure docker group exists
+  group:
+    name: docker
+    state: present
+
+- name: Add user to docker group
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Enable and start Docker service
+  systemd:
+    name: docker
+    enabled: true
+    state: started

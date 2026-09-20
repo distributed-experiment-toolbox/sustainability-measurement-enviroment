@@ -1,0 +1,69 @@
+---
+# Reference post-cluster setup: run AFTER Kubespray completes.
+#
+#   ansible-playbook -i hosts.yml sustian.deploy.post_cluster
+#
+# Kubespray reverts things on its way through - it removes Docker, rewrites
+# containerd's configuration and installs its own CoreDNS. Anything this
+# playbook re-applies is re-applying it on purpose; the run order here is the
+# one that survives.
+
+- name: "Re-assert CoreDNS upstream resolvers"
+  hosts: control_plane
+  become: false
+  tasks:
+    # The Kubespray template already sets resolvconf_mode + upstream_dns_servers,
+    # which is the prevention. This is the repair: Kubespray installs its own
+    # CoreDNS ConfigMap afterwards, and on Debian 13 that ConfigMap forwards to
+    # /etc/resolv.conf, i.e. systemd-resolved on 127.0.0.53, i.e. back to
+    # CoreDNS itself. Both are needed; neither is redundant.
+    - name: Get current CoreDNS ConfigMap
+      command: kubectl -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}'
+      register: coredns_corefile
+      changed_when: false
+      when: coredns_patch_enabled | default(false) | bool
+
+    - name: Point CoreDNS at the upstream resolvers instead of /etc/resolv.conf
+      shell: >-
+        kubectl -n kube-system get configmap coredns -o json |
+        sed 's|forward \. /etc/resolv\.conf|forward . {{ upstream_dns_servers | join(" ") }}|g' |
+        kubectl apply -f -
+      when:
+        - coredns_patch_enabled | default(false) | bool
+        - "'forward . /etc/resolv.conf' in coredns_corefile.stdout | default('')"
+      register: coredns_patch
+
+    - name: Restart CoreDNS deployment
+      command: kubectl -n kube-system rollout restart deployment coredns
+      when: coredns_patch is changed
+
+- name: "Re-install Docker on the control-plane (Kubespray removes it)"
+  hosts: control_plane
+  become: true
+  roles:
+    - role: sustian.deploy.docker
+      when: install_docker | default(false) | bool
+
+- name: "Label Kubernetes nodes"
+  hosts: control_plane
+  become: false
+  roles:
+    - sustian.deploy.node_labels
+
+- name: "Install observability stack (Helm charts)"
+  hosts: control_plane
+  become: false
+  roles:
+    - sustian.deploy.observability
+
+- name: "Install process-exporter on SUT nodes"
+  hosts: sut
+  become: true
+  roles:
+    - sustian.deploy.process_exporter
+
+- name: "Inventory names in /etc/hosts; ssh config on the control-plane"
+  hosts: all
+  become: false
+  roles:
+    - sustian.deploy.generate_ssh_config

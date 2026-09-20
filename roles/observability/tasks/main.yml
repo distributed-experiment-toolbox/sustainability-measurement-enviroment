@@ -1,0 +1,150 @@
+---
+# Install the energy observability stack via Helm on the control-plane.
+# Versions and values files: see defaults/main.yml and configurations/Readme.md.
+
+- name: Node labels agree with the nodeSelectors in the values files
+  assert:
+    that:
+      - "'role=sut' in sut_labels"
+      - "'role=system' in control_plane_labels"
+    fail_msg: >-
+      The values files pin nodeSelector 'role: sut' (kepler, node-exporter,
+      scaphandre) and 'role: system' (prometheus, operator, kube-state-metrics).
+      sut_labels={{ sut_labels }} control_plane_labels={{ control_plane_labels }}
+      would schedule the stack nowhere. Change the labels and the values files
+      together, or point *_values_file at your own copies.
+
+- name: Create temporary directory for Helm values
+  file:
+    path: /tmp/helm-values
+    state: directory
+    mode: "0755"
+
+- name: Copy Helm value files to control-plane
+  copy:
+    src: "{{ item }}"
+    dest: "/tmp/helm-values/{{ item | basename }}"
+    mode: "0644"
+  loop:
+    - "{{ kube_prometheus_stack_values_file }}"
+    - "{{ kepler_values_file }}"
+    - "{{ scaphandre_values_file }}"
+
+- name: Create monitoring namespace
+  command: kubectl create namespace {{ observability_namespace }}
+  register: ns_create
+  changed_when: ns_create.rc == 0
+  failed_when: ns_create.rc != 0 and 'AlreadyExists' not in ns_create.stderr
+
+# --- kube-prometheus-stack ---
+
+- name: Add prometheus-community Helm repo
+  command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  changed_when: false
+
+- name: Update Helm repos
+  command: helm repo update
+  changed_when: false
+
+- name: Install kube-prometheus-stack
+  command: >-
+    helm upgrade --install kube-prometheus-stack
+    prometheus-community/kube-prometheus-stack
+    --namespace {{ observability_namespace }}
+    --version {{ kube_prometheus_stack_chart_version }}
+    --values /tmp/helm-values/{{ kube_prometheus_stack_values_file | basename }}
+    --wait --timeout 10m
+
+- name: Render metrics-server ServiceMonitor manifest
+  template:
+    src: metrics-server-servicemonitor.yaml.j2
+    dest: /tmp/helm-values/metrics-server-servicemonitor.yaml
+    mode: "0644"
+
+- name: Apply metrics-server ServiceMonitor
+  command: kubectl apply -f /tmp/helm-values/metrics-server-servicemonitor.yaml
+
+# --- kepler ---
+
+- name: Install kepler
+  command: >-
+    helm upgrade --install kepler
+    oci://quay.io/sustainable_computing_io/charts/kepler
+    --namespace {{ observability_namespace }}
+    --version {{ kepler_chart_version }}
+    --values /tmp/helm-values/{{ kepler_values_file | basename }}
+    --wait --timeout 5m
+  register: kepler_install
+  failed_when: kepler_install.rc != 0 and observability_require_ready | bool
+
+# --- scaphandre ---
+#
+# Installed from a git checkout on purpose. The chart published at
+# hubblo-org.github.io/helm-charts is stale and does not deploy against a
+# current cluster; the chart in the tagged source tree does. The two kubectl
+# patches below finish the job because that chart exposes neither the
+# privileges scaphandre needs on the host nor the ServiceMonitor settings.
+# Do not "simplify" this back to a chart repo without testing a real install.
+
+- name: Clone scaphandre repository
+  git:
+    repo: https://github.com/hubblo-org/scaphandre.git
+    dest: "{{ scaphandre_src_dir }}"
+    version: "v{{ scaphandre_chart_version }}"
+  become: true
+
+- name: Set ownership of scaphandre directory
+  file:
+    path: "{{ scaphandre_src_dir }}"
+    owner: "{{ ansible_user }}"
+    recurse: true
+  become: true
+
+- name: Install scaphandre
+  command: >-
+    helm upgrade --install scaphandre {{ scaphandre_src_dir }}/helm/scaphandre
+    --namespace {{ observability_namespace }}
+    --values /tmp/helm-values/{{ scaphandre_values_file | basename }}
+    --wait --timeout 5m
+  register: scaphandre_install
+  failed_when: scaphandre_install.rc != 0 and observability_require_ready | bool
+
+- name: Patch scaphandre DaemonSet for permissions and nodeSelector
+  shell: |
+    kubectl -n {{ observability_namespace }} patch daemonset scaphandre --type strategic --patch "$(cat <<'EOF'
+    {{ lookup('template', 'scaphandre.ds.patch.j2') }}
+    EOF
+    )"
+
+- name: Patch scaphandre ServiceMonitor with intervals and protocol
+  shell: |
+    kubectl -n {{ observability_namespace }} patch servicemonitor scaphandre-service-monitoring --type merge --patch "$(cat <<'EOF'
+    {{ lookup('template', 'scaphandre.sm.patch.j2') }}
+    EOF
+    )"
+
+# --- verify ---
+#
+# helm --wait returns before the strategic patches above roll out, and an
+# energy exporter that silently never starts is the failure mode that costs a
+# whole measurement campaign. Check the DaemonSets actually settle.
+
+- name: Wait for energy exporters to become ready
+  command: >-
+    kubectl -n {{ observability_namespace }} rollout status daemonset/{{ item }}
+    --timeout={{ observability_ready_timeout }}s
+  loop:
+    - kepler
+    - scaphandre
+  register: exporter_rollout
+  changed_when: false
+  failed_when: exporter_rollout.rc != 0 and observability_require_ready | bool
+
+- name: Show monitoring pods
+  command: kubectl get pods -n {{ observability_namespace }}
+  register: monitoring_pods
+  changed_when: false
+
+- name: Report monitoring pods
+  debug:
+    msg: "{{ monitoring_pods.stdout_lines }}"

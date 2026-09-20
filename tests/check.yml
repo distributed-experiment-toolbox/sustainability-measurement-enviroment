@@ -1,0 +1,86 @@
+---
+# Offline sanity check. No cluster, no SSH, no root:
+#
+#   ansible-playbook -i tests/inventory.yml tests/check.yml
+#
+# Proves the things that silently break when this collection is consumed from
+# another repo: that the roles can still find configurations/, that the
+# Kubespray extension hooks land in the rendered overrides, and that the
+# generated inventory prefers internal_ip.
+
+- name: Collection self-check
+  hosts: control_plane
+  gather_facts: false
+  connection: local
+  vars:
+    ansible_user: admin
+  tasks:
+    - name: Load role defaults
+      include_vars: "{{ item }}"
+      loop:
+        - "{{ playbook_dir }}/../roles/observability/defaults/main.yml"
+        - "{{ playbook_dir }}/../roles/node_labels/defaults/main.yml"
+        - "{{ playbook_dir }}/../roles/kubespray/defaults/main.yml"
+        - "{{ playbook_dir }}/../roles/process_exporter/defaults/main.yml"
+
+    # set_fact, not play vars: include_vars above outranks play vars and would
+    # reset these to the empty defaults it just loaded.
+    - name: Pretend to be a consuming project
+      set_fact:
+        kubespray_extra_cluster_vars:
+          containerd_registries_mirrors:
+            - prefix: docker.io
+              server: https://registry-1.docker.io
+        kubespray_extra_addons_vars:
+          local_path_provisioner_enabled: true
+        internal_network_regexp: '10\.0\.\d{1,3}\.\d{1,3}'
+
+    - name: Values files resolve from the collection
+      stat:
+        path: "{{ item }}"
+      register: values_stat
+      failed_when: not values_stat.stat.exists
+      loop:
+        - "{{ playbook_dir }}/../configurations/kube-prometheus-stack.yaml"
+        - "{{ playbook_dir }}/../configurations/kepler.yaml"
+        - "{{ playbook_dir }}/../configurations/scaphandre.yaml"
+        - "{{ playbook_dir }}/../configurations/process-exporter.yml"
+
+    - name: Values files pin the nodeSelectors the labels promise
+      assert:
+        that:
+          - "'role: sut' in kepler_yaml"
+          - "'role=sut' in sut_labels"
+          - "'role=system' in control_plane_labels"
+        fail_msg: "configurations/*.yaml and the *_labels defaults have drifted apart"
+      vars:
+        kepler_yaml: "{{ lookup('file', playbook_dir + '/../configurations/kepler.yaml') }}"
+
+    - name: Render Kubespray cluster overrides
+      set_fact:
+        rendered_cluster: "{{ lookup('template', playbook_dir + '/../roles/kubespray/templates/k8s-cluster.yml.j2') }}"
+        rendered_addons: "{{ lookup('template', playbook_dir + '/../roles/kubespray/templates/addons.yml.j2') }}"
+        rendered_hosts: "{{ lookup('template', playbook_dir + '/../roles/kubespray/templates/hosts.yml.j2') }}"
+
+    - name: Extension hooks reach the rendered overrides
+      assert:
+        that:
+          - "'containerd_registries_mirrors' in rendered_cluster"
+          - "'flannel_interface_regexp' in rendered_cluster"
+          - "'local_path_provisioner_enabled' in rendered_addons"
+          - "'helm_enabled: true' in rendered_addons"
+        fail_msg: "kubespray_extra_* did not make it into the rendered overrides"
+
+    - name: Generated inventory prefers internal_ip over the public address
+      assert:
+        that:
+          - "'10.0.9.1' in rendered_hosts"
+          - "'203.0.113.1' not in rendered_hosts"
+        fail_msg: "hosts.yml.j2 leaked the public address into ansible_host/ip/access_ip"
+
+    - name: Rendered overrides are valid YAML
+      assert:
+        that:
+          - (rendered_cluster | from_yaml).kube_network_plugin == 'flannel'
+          - (rendered_addons | from_yaml).metrics_server_enabled
+          - (rendered_hosts | from_yaml).all.hosts.cp1.ip == '10.0.9.1'

@@ -1,0 +1,79 @@
+---
+# Build runwasi-shim on control-plane and fetch results to ansible controller.
+
+- name: Install runwasi build dependencies
+  apt:
+    name:
+      - protobuf-compiler
+      - libsystemd-dev
+      - libdbus-glib-1-dev
+      - libelf-dev
+      - libseccomp-dev
+      - libclang-dev
+      - libzstd-dev
+    state: present
+  become: true
+
+- name: Install Rust via rustup
+  shell: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  args:
+    creates: "{{ ansible_env.HOME }}/.cargo/bin/rustc"
+  become: false
+
+- name: Add wasm32-wasip2 Rust target
+  command: "{{ ansible_env.HOME }}/.cargo/bin/rustup target add wasm32-wasip2"
+  become: false
+  changed_when: false
+
+- name: Clone runwasi repository
+  git:
+    repo: "{{ runwasi_repo }}"
+    dest: "{{ runwasi_build_dir }}"
+    version: main
+    recursive: yes
+  become: true
+
+- name: Set ownership of runwasi directory
+  file:
+    path: "{{ runwasi_build_dir }}"
+    owner: "{{ ansible_user }}"
+    recurse: true
+  become: true
+
+- name: Build runwasi wasmtime shim (release)
+  command: make build-wasmtime
+  args:
+    chdir: "{{ runwasi_build_dir }}"
+  environment:
+    PATH: "{{ ansible_env.HOME }}/.cargo/bin:{{ ansible_env.PATH }}"
+    OPT_PROFILE: release
+
+- name: Build oci-tar-builder (release)
+  command: "{{ ansible_env.HOME }}/.cargo/bin/cargo build --release -p oci-tar-builder"
+  args:
+    chdir: "{{ runwasi_build_dir }}"
+  environment:
+    PATH: "{{ ansible_env.HOME }}/.cargo/bin:{{ ansible_env.PATH }}"
+
+- name: Install oci-tar-builder binary
+  copy:
+    src: "{{ runwasi_build_dir }}/target/release/oci-tar-builder"
+    dest: /usr/local/bin/oci-tar-builder
+    mode: "0755"
+    remote_src: true
+  become: true
+
+- name: Find built shim binaries
+  find:
+    paths: "{{ runwasi_build_dir }}/target/x86_64-unknown-linux-gnu/release"
+    patterns: "containerd-shim-*"
+    file_type: file
+  register: shim_binaries
+
+- name: Fetch shim binaries to ansible controller
+  fetch:
+    src: "{{ item.path }}"
+    dest: "/tmp/runwasi-shims/{{ item.path | basename }}"
+    flat: true
+  loop: "{{ shim_binaries.files }}"
+  when: shim_binaries.files | length > 0

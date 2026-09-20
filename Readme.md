@@ -1,10 +1,13 @@
 # Sustainable Deploy — Baremetal Kubernetes for Energy Experiments
 
-Automated baremetal Kubernetes deployment with an opinionated
-observability stack aimed at sustainability / energy-efficiency
-experiments. The baseline is **runtime-agnostic**: it gives you a cluster
-with RAPL access on SUT nodes and Kepler/Scaphandre/process-exporter
-metrics, ready to be extended with whatever you want to measure.
+Automated baremetal Kubernetes with an observability stack aimed at
+sustainability / energy-efficiency experiments. The baseline is
+**runtime-agnostic**: it gives you a cluster with RAPL access on the SUT
+nodes and Kepler / Scaphandre / process-exporter metrics, ready to be
+extended with whatever you want to measure.
+
+Packaged as the Ansible collection `sustian.deploy`, so several experiment
+repositories can share one baseline instead of each carrying a copy.
 
 # Basic Setup
 
@@ -27,96 +30,111 @@ Make sure firewalls allow access between all nodes.
   preferred; in active mode only `performance`/`powersave` governors
   are available (the `cpu_perf` role handles this).
 
+`tools/hetzner_rapl_check.py` cross-references live Hetzner auction
+listings against a RAPL compatibility table if you are shopping for nodes.
+
 ## Cluster Base
 - Debian based OS (Debian 13+ recommended)
-- containerd 2.2+
-- Kubernetes 1.32+
-- Flannel CNI
-- SUT CPUs pinned to `performance` governor with turbo disabled
-  (see `cpu_perf` role; tweak via `cpu_governor`, `cpu_disable_turbo`,
-  optional `cpu_max_cstate`, `cpu_isolate_cores` in group_vars)
+- containerd 2.2+, Kubernetes 1.32+, Flannel CNI
+
+Exact pins and the values files that configure them:
+[`configurations/Readme.md`](configurations/Readme.md).
 
 ## Observability Stack
-| Component | Version |
-|--- |--- |
-| Helm [kube-prometheus-stack](https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack) | v82+ |
-| Helm [kepler](https://github.com/sustainable-computing-io/kepler) | v0.11+ |
-| Helm [scaphandre](https://github.com/hubblo-org/scaphandre) | v1.0.2 |
-| GIT [process-exporter](https://github.com/ncabatoff/process-exporter) | v0.8+ |
 
-node-exporter (shipped with kube-prometheus-stack) runs on every SUT
-with these extra collectors enabled:
-`hwmon` (PMBus VRM, temps), `cpufreq` (live core frequency),
-`thermal_zone`, `rapl` (powercap), `perf` (hardware PMU counters via
-`CAP_PERFMON`). The `rapl` Ansible role sets
-`kernel.perf_event_paranoid=0` and `kernel.kptr_restrict=0` so the
-perf collector can read counters from inside the container.
+kube-prometheus-stack, Kepler, Scaphandre and process-exporter, with
+node-exporter running on every SUT with the `hwmon`, `cpufreq`,
+`thermal_zone`, `rapl` and `perf` collectors enabled. The `rapl` role sets
+`kernel.perf_event_paranoid=0` and `kernel.kptr_restrict=0` so the perf
+collector can read counters from inside the container.
 
-# Workflow
+# Usage
 
-1. Obtain 1+ baremetal instances (e.g. Hetzner dedicated server auctions),
-   install Debian 13.
-2. Obtain 1 VM / cheap dedicated server for the control-plane, install
-   Debian 13.
-3. Set up the cluster base on the nodes; the playbooks label them.
-4. Install the observability stack on the cluster.
-5. Drop in your workloads and run experiments, e.g. with SMA https://github.com/ISE-TU-Berlin/sustainability-measurement-agent.git / https://pypi.org/project/sustainability-measurement-agent/ 
-# Installation
-
-## Prerequisites
-
-- Ansible installed on the machine running the playbooks (can be the
-  control-plane itself or an external host)
-- Passwordless SSH access from the Ansible controller to all nodes
-- Debian 13+ on all nodes
-
-## Quick Start
-
-All `ansible-playbook` commands below run from the **Ansible
-controller** (wherever you cloned this repository). The pre-cluster
-playbook installs Kubespray on the **control-plane node** at
-`/opt/kubespray`, so you SSH into the control-plane to run Step 4.
+## Install
 
 ```bash
-# -- On the Ansible controller --
-cd ansible
-
-# 1. Create your inventory from the example
-cp inventory/hosts.yml.example inventory/hosts.yml
-# Edit inventory/hosts.yml with your node IPs and SSH users
-
-# 2. Review and adjust versions in inventory/group_vars/all.yml
-
-# 3. Run pre-cluster setup
-#    Installs base packages, containerd, configures RAPL on SUT,
-#    and clones Kubespray on the control-plane.
-ansible-playbook -i inventory/hosts.yml pre-cluster.yml
+ansible-galaxy collection install \
+  git+https://github.com/distributed-experiment-toolbox/sustainability-measurement-enviroment.git
 ```
 
-SSH into the control-plane:
+## Inventory contract
+
+Two groups, `control_plane` and `sut`. Each host may set:
+
+| Variable | Meaning |
+|---|---|
+| `ansible_host` | address the Ansible controller connects to |
+| `internal_ip` | private address the nodes use to reach each other; defaults to `ansible_host` |
+| `kubernetes_node_name` | node name as `kubectl get nodes` reports it |
+
+See [`examples/minimal/`](examples/minimal/).
+
+## Run
+
 ```bash
-ssh <user>@<control-plane-ip>
-
-# 4. Run Kubespray on the control-plane
-cd /opt/kubespray
-source venv/bin/activate
-ansible-playbook -i inventory/mycluster/hosts.yml cluster.yml \
-  --become --become-user=root
-
-# 5. Copy kubeconfig (still on the control-plane)
-mkdir -p ~/.kube
-sudo cp /etc/kubernetes/admin.conf ~/.kube/config
-# Replace 127.0.0.1 in the config with the public IP of the
-# control-plane so external tools can reach the API server.
-sudo chown $(id -u):$(id -g) ~/.kube/config
-kubectl get nodes
+ansible-playbook -i hosts.yml sustian.deploy.pre_cluster
 ```
 
-Back on the Ansible controller:
+Then SSH to the control-plane and run Kubespray — the playbook prints the
+exact commands, including the kubeconfig copy. Back on the controller:
+
 ```bash
-cd ansible
-
-# 6. Run post-cluster setup: CoreDNS fix, re-install Docker, label
-#    nodes, install observability stack, ssh config on control-plane.
-ansible-playbook -i inventory/hosts.yml post-cluster.yml
+ansible-playbook -i hosts.yml sustian.deploy.post_cluster
 ```
+
+Kubespray is run by hand on purpose: it is long, it is noisy, and wrapping
+it only hides the output you need when it fails.
+
+## Extending
+
+`pre_cluster` and `post_cluster` are reference assemblies, not the contract.
+A project keeps its own inventory, group_vars and roles, and either wraps
+them:
+
+```yaml
+- import_playbook: sustian.deploy.pre_cluster
+- name: "My additions"
+  hosts: sut
+  roles: [my_role]
+```
+
+or ignores them and calls the roles directly by FQCN. To push settings into
+Kubespray without forking the templates, use the extension hooks:
+
+```yaml
+kubespray_extra_cluster_vars:
+  containerd_registries_mirrors: [...]
+kubespray_extra_addons_vars:
+  local_path_provisioner_enabled: true
+```
+
+[`examples/runwasi-experiment/`](examples/runwasi-experiment/) is a worked
+example that adds a second container runtime.
+
+## Roles
+
+| Role | Runs on | Does |
+|---|---|---|
+| `ssh_access` | control-plane | generates a key, distributes it to the SUT nodes |
+| `base_packages` | all | common packages, Helm, Skaffold |
+| `docker` | control-plane | Docker for building images — run again post-cluster, Kubespray removes it |
+| `containerd` | all | containerd v2, runc, CNI plugins, `config.d` imports |
+| `rapl` | sut | msr module, perf sysctls, RAPL availability check |
+| `cpu_perf` | sut | pins the governor, disables turbo, optional C-state / isolation cmdline |
+| `kubespray` | control-plane | clones Kubespray and generates its inventory and overrides |
+| `node_labels` | control-plane | applies `control_plane_labels` / `sut_labels` |
+| `observability` | control-plane | kube-prometheus-stack, Kepler, Scaphandre |
+| `process_exporter` | sut | process-exporter plus its Prometheus ScrapeConfig |
+| `generate_ssh_config` | all | inventory names in `/etc/hosts`, ssh config on the control-plane |
+
+Opinions are off by default and enabled in group_vars: `cpu_perf_enabled`,
+`install_docker`, `coredns_patch_enabled`.
+
+## Checking a change
+
+```bash
+ansible-playbook -i tests/inventory.yml tests/check.yml
+```
+
+No cluster needed — it renders the Kubespray templates and asserts the
+values files, node labels and `internal_ip` handling still line up.

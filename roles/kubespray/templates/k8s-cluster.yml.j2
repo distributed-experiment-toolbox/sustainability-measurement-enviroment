@@ -1,0 +1,38 @@
+---
+# Kubespray k8s-cluster overrides.
+# {{ ansible_managed }}
+#
+# Only settings that differ from Kubespray defaults are listed here.
+
+kube_network_plugin: {{ kube_network_plugin }}
+
+container_manager: containerd
+
+# SystemdCgroup (default in Kubespray v2.30.0, listed explicitly for clarity)
+kubelet_cgroup_driver: systemd
+
+# Fix CoreDNS loop: Debian 13 uses systemd-resolved (127.0.0.53), which makes
+# CoreDNS forward queries back to itself. Point kubelet at the real upstream
+# resolvers instead of the local stub.
+resolvconf_mode: host_resolvconf
+upstream_dns_servers:
+{% for dns in upstream_dns_servers %}
+  - {{ dns }}
+{% endfor %}
+
+# Nodes talk over internal_ip (kubelet, etcd, CNI); the public address stays a
+# valid API server SAN so a kubeconfig used from outside still verifies.
+supplementary_addresses_in_ssl_keys:
+{% for host in groups['control_plane'] %}
+  - {{ hostvars[host].ansible_host }}
+{% endfor %}
+{% if internal_network_regexp is defined and internal_network_regexp | length > 0 %}
+
+# Pin the CNI to the internal network interface.
+flannel_interface_regexp: '{{ internal_network_regexp }}'
+{% endif %}
+{% if kubespray_extra_cluster_vars | length > 0 %}
+
+# --- kubespray_extra_cluster_vars ---
+{{ kubespray_extra_cluster_vars | to_nice_yaml(indent=2) }}
+{% endif %}

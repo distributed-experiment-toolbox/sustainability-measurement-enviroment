@@ -1,0 +1,24 @@
+---
+# Baseline pre-cluster, then the experiment's own additions.
+#
+#   ansible-playbook -i hosts.yml pre-cluster.yml
+#
+# The baseline's last step only clones and configures Kubespray; it does not
+# create the cluster. So the shim work can follow it directly, and Kubespray
+# still runs by hand afterwards.
+
+- import_playbook: sustian.deploy.pre_cluster
+
+- name: "Build runwasi shim on the control-plane"
+  hosts: control_plane
+  become: false
+  tags: [runwasi]
+  roles:
+    - runwasi_build
+
+- name: "Deploy runwasi shim to SUT nodes"
+  hosts: sut
+  become: true
+  tags: [runwasi]
+  roles:
+    - runwasi_shim

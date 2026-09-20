@@ -1,0 +1,33 @@
+---
+# https://github.com/kubernetes-sigs/kubespray/releases
+# v2.30.0 defaults: K8s 1.34.3, containerd 2.2.1, flannel 0.27.3
+kubespray_version: "v2.30.0"
+kubespray_dir: "/opt/kubespray"
+kube_network_plugin: flannel
+
+# Resolvers CoreDNS and kubelet forward to. Debian 13 runs systemd-resolved on
+# 127.0.0.53; left alone, CoreDNS forwards queries back to itself.
+upstream_dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# Regex matching the interface carrying the internal network, passed to
+# flannel_interface_regexp. Leave unset when nodes have no separate internal
+# network. Example for a Hetzner private network:
+#   internal_network_regexp: '10\.0\.\d{1,3}\.\d{1,3}'
+# internal_network_regexp: ''
+
+# --- Extension hooks -------------------------------------------------------
+# Merged verbatim into Kubespray's group_vars overrides, so a project can add
+# settings without forking these templates. Example:
+#   kubespray_extra_cluster_vars:
+#     containerd_registries_mirrors:
+#       - prefix: docker.io
+#         mirrors: [{host: "http://10.0.0.1:5001", capabilities: ["pull", "resolve"]}]
+#   kubespray_extra_addons_vars:
+#     local_path_provisioner_enabled: true
+kubespray_extra_cluster_vars: {}
+kubespray_extra_addons_vars: {}
+
+# Must match the key ssh_access generated on the control-plane.
+ssh_key_path: "{{ '/root' if ansible_user == 'root' else '/home/' + ansible_user }}/.ssh/experiment_key"

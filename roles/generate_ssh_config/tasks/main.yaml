@@ -1,0 +1,25 @@
+---
+# Make inventory names usable as hostnames on the cluster, and give the
+# control-plane an ssh config that reaches every node by that name.
+#
+# Run with `hosts: all` so /etc/hosts is written everywhere; the ssh config
+# task delegates to the control-plane and runs once.
+
+- name: "Inventory names resolve to the internal network"
+  lineinfile:
+    path: /etc/hosts
+    regexp: '\s{{ item }}$'
+    line: "{{ hostvars[item].internal_ip | default(hostvars[item].ansible_host) }} {{ item }}"
+  loop: "{{ groups['all'] }}"
+  become: true
+
+- name: "Generate ssh config file on control-plane"
+  template:
+    src: config.j2
+    dest: "{{ ansible_env.HOME }}/.ssh/config"
+    mode: "0600"
+  vars:
+    ssh_config_user: "{{ hostvars[groups['control_plane'][0]].ansible_user | default('root') }}"
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  run_once: true
+  become: false

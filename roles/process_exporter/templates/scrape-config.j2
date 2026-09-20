@@ -1,0 +1,11 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: process-exporter
+  labels:
+    release: kube-prometheus-stack
+spec:
+  staticConfigs:
+  {% for host in groups['sut'] %}
+    - targets: ["{{ hostvars[host].internal_ip | default(hostvars[host].ansible_host) | default(host) }}:9256"]
+  {% endfor %}

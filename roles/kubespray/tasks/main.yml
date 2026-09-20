@@ -1,0 +1,74 @@
+---
+# Clone Kubespray, install its Python dependencies, and generate a cluster
+# inventory from this inventory. Kubespray itself is run by hand on the
+# control-plane afterwards - it is a long, interactive-ish job and wrapping it
+# only hides its output.
+
+- name: Clone Kubespray {{ kubespray_version }}
+  git:
+    repo: https://github.com/kubernetes-sigs/kubespray.git
+    dest: "{{ kubespray_dir }}"
+    version: "{{ kubespray_version }}"
+  become: true
+
+- name: Set ownership of kubespray directory
+  file:
+    path: "{{ kubespray_dir }}"
+    owner: "{{ ansible_user }}"
+    recurse: true
+  become: true
+
+- name: Create Kubespray virtualenv
+  command: python3 -m venv {{ kubespray_dir }}/venv
+  args:
+    creates: "{{ kubespray_dir }}/venv/bin/activate"
+
+- name: Install Kubespray Python requirements in virtualenv
+  pip:
+    requirements: "{{ kubespray_dir }}/requirements.txt"
+    virtualenv: "{{ kubespray_dir }}/venv"
+  become: false
+
+- name: Copy sample inventory
+  command: cp -r {{ kubespray_dir }}/inventory/sample {{ kubespray_dir }}/inventory/mycluster
+  args:
+    creates: "{{ kubespray_dir }}/inventory/mycluster"
+
+- name: Generate Kubespray hosts.yml
+  template:
+    src: hosts.yml.j2
+    dest: "{{ kubespray_dir }}/inventory/mycluster/hosts.yml"
+
+# group_vars files load alphabetically and the last one wins: an
+# "x-override.yml" sorts BEFORE "x.yml" and loses every setting it declares.
+# The "zz-" prefix is what actually makes these overrides take effect.
+- name: Configure k8s-cluster variables
+  template:
+    src: k8s-cluster.yml.j2
+    dest: "{{ kubespray_dir }}/inventory/mycluster/group_vars/k8s_cluster/zz-k8s-cluster-override.yml"
+
+- name: Configure addons
+  template:
+    src: addons.yml.j2
+    dest: "{{ kubespray_dir }}/inventory/mycluster/group_vars/k8s_cluster/zz-addons-override.yml"
+
+- name: Print next steps
+  debug:
+    msg: |
+      Kubespray is ready at {{ kubespray_dir }}.
+      Run the cluster installation ON THE CONTROL-PLANE:
+
+        cd {{ kubespray_dir }}
+        source venv/bin/activate
+        ansible-playbook -i inventory/mycluster/hosts.yml cluster.yml \
+          --become --become-user=root
+
+      Then copy the kubeconfig, replacing 127.0.0.1 with the control-plane
+      address if you want to reach the API server from outside:
+
+        mkdir -p ~/.kube
+        sudo cp /etc/kubernetes/admin.conf ~/.kube/config
+        sudo chown $(id -u):$(id -g) ~/.kube/config
+        kubectl get nodes
+
+      Back on the Ansible controller, run the post-cluster playbook.

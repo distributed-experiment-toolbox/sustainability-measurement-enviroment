@@ -1,0 +1,13 @@
+---
+# Release artefacts are downloaded per architecture; every node in the
+# inventory is assumed to share one. Override per host if they do not.
+deploy_arch: amd64
+
+# Pinned deliberately: unpinned, the installer picks up Helm 4, which applies
+# server-side and turns a values-file typo from "silently pruned" into a failed
+# install. Bump together with the values files in configurations/.
+helm_version: "v3.21.4"
+
+# Skaffold has no stable versioned URL scheme worth pinning; "latest" is the
+# published download path. Only used for building images on the control-plane.
+install_skaffold: true

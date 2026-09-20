@@ -1,0 +1,12 @@
+---
+# Generic role split: the control-plane runs workload generators and tooling,
+# SUT nodes are the systems under measurement. Add experiment-specific labels
+# (runtime, scheduler, ...) in your own group_vars.
+#
+# These values also appear as nodeSelectors in configurations/*.yaml. Change
+# them together - the observability role asserts they still agree.
+control_plane_labels:
+  - "role=system"
+  - "workload-generator=true"
+sut_labels:
+  - "role=sut"

@@ -1,0 +1,11 @@
+---
+# Contents of /etc/docker/daemon.json. Empty means the file is not written at
+# all, which is the right default: Docker >= 29 passes --containerd on the
+# unit's command line and refuses a duplicate key in daemon.json, so the
+# "containerd": "/run/containerd/containerd.sock" setting older versions of
+# this role wrote now breaks the daemon on a current release.
+#
+# Projects that need something here set it, e.g. a plain-http registry:
+#   docker_daemon_config:
+#     insecure-registries: ["10.0.0.1:5000"]
+docker_daemon_config: {}

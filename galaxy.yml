@@ -1,0 +1,25 @@
+---
+namespace: sustian
+name: deploy
+version: 1.0.0
+readme: Readme.md
+authors:
+  - Sebastian Werner <werner@tu-berlin.de>
+description: >-
+  Baremetal Kubernetes for energy experiments: RAPL-capable SUT nodes and a
+  Kepler / Scaphandre / process-exporter observability stack.
+license:
+  - Apache-2.0
+tags:
+  - kubernetes
+  - observability
+  - energy
+  - sustainability
+  - baremetal
+repository: https://github.com/distributed-experiment-toolbox/sustainability-measurement-enviroment
+issues: https://github.com/distributed-experiment-toolbox/sustainability-measurement-enviroment/issues
+build_ignore:
+  - "*.iso"
+  - .claude
+  - .github
+  - tools

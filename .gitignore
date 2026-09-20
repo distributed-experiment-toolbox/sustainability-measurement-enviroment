@@ -1,2 +1,4 @@
-.iso
+*.iso
 hosts.yml
+*.tar.gz
+.venv/

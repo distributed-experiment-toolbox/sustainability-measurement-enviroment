@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metrics-server
+  namespace: {{ observability_namespace }}
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      # Kubespray's metrics-server ships app.kubernetes.io/name, not the
+      # k8s-app label this selector used to match - it silently scraped nothing.
+      app.kubernetes.io/name: metrics-server
+  endpoints:
+    - port: https
+      scheme: https
+      path: /metrics
+      interval: 15s
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true

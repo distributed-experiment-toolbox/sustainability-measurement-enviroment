@@ -1,0 +1,24 @@
+---
+# Overrides on top of the collection's role defaults.
+
+# --- Baseline opinions ---
+cpu_perf_enabled: true
+install_docker: true
+coredns_patch_enabled: true
+
+# The shim needs containerd's config.d imports in place before Kubespray runs,
+# so the baseline containerd role is doing real work here.
+
+# --- Node labels ---
+# The extra `runtime` label is what a workload's nodeSelector targets.
+# `role=sut` must stay - the observability values files select on it.
+sut_labels:
+  - "role=sut"
+  - "runtime=wasmtime"
+
+# --- Runwasi ---
+# containerd v2 compatible fork; swap for another shim (wasmer, wasmedge) by
+# changing the make target in roles/runwasi_build and the RuntimeClass handler
+# in post-cluster.yml.
+runwasi_repo: "https://github.com/containerd/runwasi.git"
+runwasi_build_dir: "/opt/runwasi"

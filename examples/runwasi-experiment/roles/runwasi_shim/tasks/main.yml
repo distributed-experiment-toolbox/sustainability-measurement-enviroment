@@ -1,0 +1,43 @@
+---
+# Deploy pre-built runwasi-shim binaries to SUT nodes and configure containerd.
+# Binaries are expected at /tmp/runwasi-shims/ on the Ansible controller
+# (fetched during Step 3a in pre-cluster.yml).
+
+- name: Find shim binaries on ansible controller
+  find:
+    paths: /tmp/runwasi-shims
+    patterns: "containerd-shim-*"
+    file_type: file
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: local_shim_binaries
+
+- name: Copy shim binaries to SUT node
+  copy:
+    src: "{{ item.path }}"
+    dest: "/usr/local/bin/{{ item.path | basename }}"
+    mode: "0755"
+  loop: "{{ local_shim_binaries.files }}"
+  when: local_shim_binaries.files | length > 0
+  notify: restart containerd after shim install
+
+- name: Ensure containerd config.d directory exists
+  file:
+    path: /etc/containerd/config.d
+    state: directory
+
+- name: Deploy runwasi containerd runtime config
+  template:
+    src: runwasi.toml.j2
+    dest: /etc/containerd/config.d/runwasi.toml
+  notify: restart containerd after shim install
+
+- name: Ensure containerd is importing configs from config.d
+  lineinfile:
+    path: /etc/containerd/config.toml
+    regexp: '^imports = \[.*\]$'
+    line: 'imports = ["/etc/containerd/config.d/*.toml"]'
+    insertafter: '^oom_score\s*=\s*0$'
+    state: present
+  notify: restart containerd after shim install

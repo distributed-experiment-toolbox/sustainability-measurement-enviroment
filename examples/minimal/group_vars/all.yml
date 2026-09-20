@@ -1,0 +1,41 @@
+---
+# Everything here is an override of a role default. The roles run without
+# this file; these are the choices a measurement setup usually wants.
+# Versions and values files live in the roles - see configurations/Readme.md.
+
+# --- Opinions, off by default in the reference playbooks -------------------
+
+# Pin the SUT governor to `performance` and disable turbo, so clock speed
+# stops being a hidden variable between runs. This is an experimental choice:
+# it is not how the machine would run in production, and it costs idle power.
+cpu_perf_enabled: true
+cpu_governor: performance
+cpu_disable_turbo: true
+# cpu_max_cstate: "1"        # cap idle depth; needs a reboot
+# cpu_isolate_cores: "2-15"  # nohz_full + isolcpus; needs a reboot
+
+# Docker on the control-plane, for building and pushing workload images.
+# Skip it if your images are built elsewhere.
+install_docker: true
+
+# Rewrite the CoreDNS ConfigMap after Kubespray installs it. Needed on
+# Debian 13, where CoreDNS otherwise forwards to systemd-resolved and loops.
+# Sends cluster DNS to whatever upstream_dns_servers names - a policy choice.
+coredns_patch_enabled: true
+upstream_dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# --- Node labels -----------------------------------------------------------
+# Must stay in sync with the nodeSelectors in configurations/*.yaml.
+control_plane_labels:
+  - "role=system"
+  - "workload-generator=true"
+sut_labels:
+  - "role=sut"
+
+# --- Networking ------------------------------------------------------------
+# Set when nodes reach each other over a private network. Hosts declare their
+# private address as `internal_ip`; this regex tells flannel which interface
+# carries it.
+# internal_network_regexp: '10\.0\.\d{1,3}\.\d{1,3}'
