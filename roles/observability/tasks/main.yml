@@ -2,17 +2,26 @@
 # Install the energy observability stack via Helm on the control-plane.
 # Versions and values files: see defaults/main.yml and configurations/Readme.md.
 
+# sut_labels and control_plane_labels are declared by the node_labels role,
+# and a role's defaults are visible only while that role runs - so from here
+# they are whatever the consuming project put in its group_vars. Checked
+# rather than assumed: left undefined, the assert below would abort resolving
+# its own fail_msg and report "'sut_labels' is undefined", which says nothing
+# about what to do next.
 - name: Node labels agree with the nodeSelectors in the values files
   assert:
     that:
-      - "'role=sut' in sut_labels"
-      - "'role=system' in control_plane_labels"
+      - sut_labels is defined and "'role=sut' in sut_labels"
+      - control_plane_labels is defined and "'role=system' in control_plane_labels"
     fail_msg: >-
       The values files pin nodeSelector 'role: sut' (kepler, node-exporter,
       scaphandre) and 'role: system' (prometheus, operator, kube-state-metrics).
-      sut_labels={{ sut_labels }} control_plane_labels={{ control_plane_labels }}
-      would schedule the stack nowhere. Change the labels and the values files
-      together, or point *_values_file at your own copies.
+      sut_labels={{ sut_labels | default('undefined') }}
+      control_plane_labels={{ control_plane_labels | default('undefined') }}
+      would schedule the stack nowhere. Declare both in your group_vars - more
+      than one role reads them, so the node_labels defaults do not reach here -
+      and change them together with the values files, or point *_values_file at
+      your own copies.
 
 - name: Create temporary directory for Helm values
   file:

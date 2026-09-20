@@ -122,13 +122,21 @@ example that adds a second container runtime.
 | `rapl` | sut | msr module, perf sysctls, RAPL availability check |
 | `cpu_perf` | sut | pins the governor, disables turbo, optional C-state / isolation cmdline |
 | `kubespray` | control-plane | clones Kubespray and generates its inventory and overrides |
-| `node_labels` | control-plane | applies `control_plane_labels` / `sut_labels` |
+| `node_labels` | control-plane | applies `control_plane_labels` / `sut_labels` (see below) |
 | `observability` | control-plane | kube-prometheus-stack, Kepler, Scaphandre |
 | `process_exporter` | sut | process-exporter plus its Prometheus ScrapeConfig |
 | `generate_ssh_config` | all | inventory names in `/etc/hosts`, ssh config on the control-plane |
 
 Opinions are off by default and enabled in group_vars: `cpu_perf_enabled`,
 `install_docker`, `coredns_patch_enabled`.
+
+`control_plane_labels` and `sut_labels` belong in your group_vars, as in
+[`examples/minimal/`](examples/minimal/group_vars/all.yml), even though
+`node_labels` declares defaults for them. A role's defaults are visible only
+while that role runs: `observability` reads both to check its values files
+still schedule somewhere, and a consuming project's own roles usually read them
+too — a nodeSelector for a workload, say. Left to the default, those uses see
+an undefined variable.
 
 ## Checking a change
 
