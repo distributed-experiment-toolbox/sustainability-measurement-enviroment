@@ -78,6 +78,49 @@
           - "'203.0.113.1' not in rendered_hosts"
         fail_msg: "hosts.yml.j2 leaked the public address into ansible_host/ip/access_ip"
 
+    # 2026-09-21: /etc/process-exporter.yml was updated on a running SUT and the
+    # exporter kept its old groups for hours, because only the service template
+    # notified the handler. Every task that writes a file the exporter reads at
+    # startup has to notify, or the change is invisible: the scrape target stays
+    # up and Prometheus keeps serving the metrics the previous config defined.
+    #
+    # Written as an explicit loop over the parsed tasks rather than with
+    # selectattr: on a dict, `selectattr('copy', 'defined')` resolves `copy` to
+    # dict.copy, the method, which is defined on every task and matches all of
+    # them. Subscripting with `in` is the version that asks what it means to ask.
+    # Joined to a plain string on purpose: a set_fact whose template renders
+    # "['a']" is converted back to a list sometimes and left a string other
+    # times, and `length` then counts either tasks or characters.
+    - name: Collect process_exporter tasks that write what the exporter reads
+      set_fact:
+        exporter_writes_without_notify: >-
+          {%- set out = [] -%}
+          {%- for t in process_exporter_tasks -%}
+            {%- set mod = t['copy'] if 'copy' in t else (t['template'] if 'template' in t else None) -%}
+            {%- if mod and mod['dest'] in exporter_inputs and 'notify' not in t -%}
+              {{- out.append(t['name']) or '' -}}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ out | join(', ') }}
+      vars:
+        process_exporter_tasks: "{{ lookup('file', playbook_dir
+          + '/../roles/process_exporter/tasks/main.yml') | from_yaml }}"
+        exporter_inputs:
+          - /etc/process-exporter.yml
+          - /usr/local/bin/process-exporter
+          - /etc/systemd/system/process-exporter.service
+
+    - name: Everything process-exporter reads at startup notifies its restart
+      assert:
+        that:
+          - exporter_writes_without_notify | trim | length == 0
+        fail_msg: >-
+          {{ exporter_writes_without_notify }} write(s) a file
+          process-exporter reads at startup without notifying
+          'restart process-exporter'; the change would land on disk and the
+          running exporter would keep serving the old configuration
+        success_msg: "every process_exporter write notifies the restart handler"
+
     - name: Rendered overrides are valid YAML
       assert:
         that:

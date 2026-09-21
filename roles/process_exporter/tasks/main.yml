@@ -19,11 +19,18 @@
     dest: /usr/local/bin/process-exporter
     mode: "0755"
     remote_src: true
+  notify: restart process-exporter
 
+# The exporter reads this file once, at startup. Without the notify a config
+# change lands on disk and the running process keeps serving the old groups,
+# which is silent: the scrape target stays up and Prometheus keeps receiving
+# the metrics the previous config defined. A campaign then measures with an
+# instrument it believes it has changed.
 - name: Deploy process-exporter configuration
   copy:
     src: "{{ process_exporter_config_file }}"
     dest: /etc/process-exporter.yml
+  notify: restart process-exporter
 
 - name: Create process-exporter systemd service
   template:
